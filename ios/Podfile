@@ -1,25 +1,26 @@
-# Resolve react_native_pods.rb with node to allow for hoisting
-require Pod::Executable.execute_command('node', ['-p',
-  'require.resolve(
-    "react-native/scripts/react_native_pods.rb",
-    {paths: [process.argv[1]]},
-  )', __dir__]).strip
+ENV['RCT_NEW_ARCH_ENABLED'] = '0'
+ENV['USE_TURBOMODULE'] = '0'
 
-platform :ios, min_ios_version_supported
+require Pod::Executable.execute_command(
+  'node',
+  [
+    '-p',
+    'require.resolve("react-native/scripts/react_native_pods.rb", {paths: [process.argv[1]]})',
+    __dir__
+  ]
+).strip
+
+platform :ios, '16.0'
+
 prepare_react_native_project!
-
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
 
 target 'DocXmlScanner' do
   config = use_native_modules!
 
+  pod 'react-native-config', :path => '../node_modules/react-native-config'
+
   use_react_native!(
     :path => config[:reactNativePath],
-    # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
@@ -27,8 +28,23 @@ target 'DocXmlScanner' do
     react_native_post_install(
       installer,
       config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-      # :ccache_enabled => true
+      :mac_catalyst_enabled => false
     )
+
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+          '$(inherited)'
+        ]
+
+        unless config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'].include?(
+          'RCT_NEW_ARCH_ENABLED=0'
+        )
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'RCT_NEW_ARCH_ENABLED=0'
+        end
+      end
+    end
   end
 end
